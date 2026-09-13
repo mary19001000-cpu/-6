@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0a0a">
+<title>🚒 ملاحة الإطفاء - درع الغابة</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Tahoma,sans-serif;-webkit-tap-highlight-color:transparent}
+body{background:#0a0a0a;color:#e0e0e0;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* Splash */
+#splash{position:fixed;inset:0;background:linear-gradient(145deg,#2a0a0a,#1a0a0a);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:9999;transition:opacity .7s,visibility .7s;text-align:center;padding:20px}
+#splash.hidden{opacity:0;visibility:hidden}
+#splashLogo{width:120px;height:120px;background:#d32f2f;border-radius:50%;display:flex;justify-content:center;align-items:center;font-size:3.6rem;box-shadow:0 0 50px rgba(211,47,47,.5);border:3px solid #ff5252;margin-bottom:18px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+#splash h1{font-size:1.7rem;color:#fff;margin-bottom:6px}
+#splash p{color:#ef9a9a;font-size:1rem;margin-bottom:18px}
+#splash .bar{width:150px;height:3px;background:#3a1a1a;border-radius:4px;overflow:hidden}
+#splash .bar::after{content:'';display:block;width:40%;height:100%;background:#ff5252;animation:load 1.6s infinite}
+@keyframes load{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+
+/* Header */
+header{background:#111;border-bottom:2px solid #d32f2f;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;z-index:100}
+header h1{font-size:1rem;color:#ff5252}
+#connStatus{font-size:.7rem;padding:3px 8px;border-radius:10px;background:#333;color:#aaa}
+#connStatus.online{background:#1b5e20;color:#a5d6a7}
+#connStatus.offline{background:#b71c1c;color:#ffcdd2}
+
+/* Map */
+#map{flex:1;min-height:0;background:#1a1a1a;z-index:1}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#1a1a1a;color:#eee}
+.leaflet-popup-content{margin:10px}
+
+/* Bottom sheet */
+#sheet{background:#111;border-top:2px solid #d32f2f;max-height:52vh;overflow-y:auto;padding:10px;transition:max-height .3s}
+#sheet.collapsed{max-height:64px;overflow:hidden}
+.sheet-handle{width:50px;height:4px;background:#444;border-radius:2px;margin:0 auto 8px;cursor:pointer}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.sheet-head h2{font-size:.95rem;color:#ff5252}
+
+/* Nav card */
+#navCard{background:linear-gradient(135deg,#1a0a0a,#2a1010);border:1px solid #d32f2f;border-radius:10px;padding:12px;margin-bottom:10px;display:none}
+#navCard.active{display:block}
+.nav-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.nav-arrow{font-size:2.2rem;min-width:52px;text-align:center;color:#ff5252}
+.nav-text{flex:1}
+.nav-text .instr{font-size:1.05rem;font-weight:bold;color:#fff;line-height:1.3}
+.nav-text .road{font-size:.78rem;color:#999;margin-top:2px}
+.nav-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.nav-stat{background:#0a0a0a;border:1px solid #333;border-radius:8px;padding:8px 4px}
+.nav-stat .v{font-size:1.1rem;font-weight:bold;color:#4CAF50}
+.nav-stat .l{font-size:.65rem;color:#888;margin-top:2px}
+
+/* Buttons */
+.btn{border:none;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#fff;cursor:pointer;font-weight:bold;transition:.15s}
+.btn:active{transform:scale(.97)}
+.btn-red{background:#d32f2f}
+.btn-orange{background:#ff6f00}
+.btn-green{background:#2e7d32}
+.btn-blue{background:#1976d2}
+.btn-gray{background:#444}
+.btn-sm{padding:6px 10px;font-size:.75rem;border-radius:6px}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+
+/* Fire list */
+.fire-item{background:#1a1a1a;border:1px solid #333;border-right:4px solid #d32f2f;border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;transition:.2s}
+.fire-item:active{background:#252525}
+.fire-item.selected{border-color:#4CAF50;border-right-color:#4CAF50;background:#0f1f0f}
+.fire-item.far{opacity:.45;border-right-color:#555}
+.fire-item .fi-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.fire-item .fi-title{font-weight:bold;color:#ff8a80;font-size:.9rem}
+.fire-item .fi-dist{font-weight:bold;color:#4CAF50;font-size:.85rem}
+.fire-item .fi-sub{font-size:.72rem;color:#999;line-height:1.5}
+.badge{display:inline-block;padding:1px 7px;border-radius:8px;font-size:.62rem;font-weight:bold;margin-left:4px}
+.b-new{background:#c62828;color:#fff}
+.b-proc{background:#ef6c00;color:#fff}
+.b-done{background:#2e7d32;color:#fff}
+.b-nasa{background:#283593;color:#fff}
+
+/* Toast */
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(120px);background:#222;border:1px solid #444;color:#fff;padding:10px 20px;border-radius:24px;font-size:.85rem;z-index:9999;transition:transform .3s;max-width:90%;text-align:center}
+#toast.show{transform:translateX(-50%) translateY(0)}
+#toast.ok{background:#1b5e20;border-color:#4CAF50}
+#toast.err{background:#b71c1c;border-color:#f44336}
+#toast.warn{background:#e65100;border-color:#ff9800}
+
+/* Settings modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;justify-content:center;align-items:center;z-index:2000;padding:16px}
+.modal.active{display:flex}
+.modal-box{background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:18px;width:100%;max-width:400px;max-height:88vh;overflow-y:auto}
+.modal-box h3{color:#ff5252;margin-bottom:12px;text-align:center;font-size:1.05rem}
+.set-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #262626;font-size:.85rem}
+input[type=range]{width:100%;accent-color:#d32f2f}
+input[type=number],select{width:100%;padding:9px;border-radius:6px;border:1px solid #444;background:#222;color:#fff;font-size:.9rem}
+
+/* Compass */
+#compassBox{position:absolute;top:10px;left:10px;z-index:500;background:rgba(17,17,17,.85);border:1px solid #444;border-radius:50%;width:62px;height:62px;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+#compassArrow{width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:26px solid #ff5252;transform-origin:center 70%;transition:transform .3s}
+#compassN{position:absolute;top:4px;font-size:.6rem;color:#4CAF50;font-weight:bold}
+
+.hint{font-size:.7rem;color:#777;text-align:center;padding:6px}
+</style>
+</head>
+<body>
+
+<div id="splash">
+  <div id="splashLogo">🚒</div>
+  <h1>ملاحة سيارة الإطفاء</h1>
+  <p>متصل بنظام درع الغابة v3.0</p>
+  <div class="bar"></div>
+</div>
+
+<header>
+  <h1>🚒 وحدة الملاحة الميدانية</h1>
+  <span id="connStatus">⏳ اتصال...</span>
+</header>
+
+<div style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column">
+  <div id="map"></div>
+  <div id="compassBox"><span id="compassN">N</span><div id="compassArrow"></div></div>
+</div>
+
+<div id="sheet">
+  <div class="sheet-handle" id="sheetHandle"></div>
+  <div class="sheet-head">
+    <h2>🔥 البلاغات النشطة</h2>
+    <div class="row">
+      <button class="btn btn-blue btn-sm" id="btnLocate">📍 موقعي</button>
+      <button class="btn btn-gray btn-sm" id="btnSettings">⚙️</button>
+    </div>
+  </div>
+
+  <div id="navCard">
+    <div class="nav-top">
+      <div class="nav-arrow" id="navArrow">⬆️</div>
+      <div class="nav-text">
+        <div class="instr" id="navInstr">--</div>
+        <div class="road" id="navRoad">--</div>
+      </div>
+    </div>
+    <div class="nav-stats">
+      <div class="nav-stat"><div class="v" id="navDist">--</div><div class="l">كم متبقية</div></div>
+      <div class="nav-stat"><div class="v" id="navTime">--</div><div class="l">دقيقة</div></div>
+      <div class="nav-stat"><div class="v" id="navArrive">--</div><div class="l">الوصول</div></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn btn-green btn-sm" id="btnAccept" style="flex:1">✅ استلام المهمة</button>
+      <button class="btn btn-gray btn-sm" id="btnStopNav" style="flex:1">⏹️ إيقاف التوجيه</button>
+      <button class="btn btn-blue btn-sm" id="btnExternal" style="flex:1">🗺️ خرائط جوجل</button>
+      <button class="btn btn-orange btn-sm" id="btnDone" style="flex:1">🏁 تم الإخماد</button>
+    </div>
+  </div>
+
+  <div id="fireList"></div>
+  <div class="hint">اسحب الشريط للأسفل لتوسيع الخريطة</div>
+</div>
+
+<div class="modal" id="settingsModal">
+  <div class="modal-box">
+    <h3>⚙️ إعدادات الملاحة</h3>
+    <div style="margin-bottom:12px">
+      <label style="font-size:.8rem;color:#aaa">نطاق البحث عن الحرائق: <b id="radiusVal" style="color:#4CAF50">45</b> كم</label>
+      <input type="range" id="radiusRange" min="10" max="150" step="5" value="45">
+    </div>
+    <div class="set-row">
+      <span>🔊 التوجيه الصوتي</span>
+      <input type="checkbox" id="voiceToggle" checked style="width:auto;accent-color:#4CAF50">
+    </div>
+    <div class="set-row">
+      <span>🎯 التوجيه التلقائي لأقرب حريق</span>
+      <input type="checkbox" id="autoRouteToggle" checked style="width:auto;accent-color:#4CAF50">
+    </div>
+    <div class="set-row">
+      <span>📳 الاهتزاز عند التنبيه</span>
+      <input type="checkbox" id="vibrateToggle" checked style="width:auto;accent-color:#4CAF50">
+    </div>
+    <div class="set-row">
+      <span>🔄 إعادة حساب المسار كل</span>
+      <select id="rerouteSelect" style="width:100px">
+        <option value="30">30 ثانية</option>
+        <option value="60" selected>دقيقة</option>
+        <option value="120">دقيقتان</option>
+        <option value="0">يدوي</option>
+      </select>
+    </div>
+    <div class="set-row" style="border:none">
+      <span>📡 حالة الاتصال</span>
+      <span id="fbState" style="color:#4CAF50;font-size:.8rem">--</span>
+    </div>
+    <div class="set-row" style="border:none">
+      <span>📊 التشخيص (مستلمة/معروضة/متجاهلة)</span>
+      <span id="fbDiag" style="color:#4CAF50;font-size:.8rem">0 / 0 / 0</span>
+    </div>
+    <button class="btn btn-gray" id="btnCloseSettings" style="width:100%;margin-top:14px">إغلاق</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
+<script>
+(function(){
+'use strict';
+
+/* ================= Firebase (نفس مشروع درع الغابة) ================= */
+var firebaseConfig = {
+  apiKey: "AIzaSyC1MTq6BVeEcKmBw_QpFvIvDHLHxvz-KnU",
+  authDomain: "forest-shield-syria-cad77.firebaseapp.com",
+  projectId: "forest-shield-syria-cad77",
+  storageBucket: "forest-shield-syria-cad77.firebasestorage.app",
+  messagingSenderId: "203491756771",
+  appId: "1:203491756771:web:9284bf6dab09d04705d3d6",
+  measurementId: "G-XF4VNQLDMP"
+};
+if (typeof firebase !== 'undefined' && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+var db = (typeof firebase !== 'undefined' && firebase.firestore) ? firebase.firestore() : null;
+var auth = (typeof firebase !== 'undefined' && firebase.auth) ? firebase.auth() : null;
+if (db && db.enablePersistence) db.enablePersistence().catch(function(){});
+
+/* ================= الحالة العامة ================= */
+var map, userMarker, accuracyCircle, routeLine, routeCasing;
+var fireMarkers = {};
+var reports = [];
+var userLat = null, userLng = null, userAcc = null;
+var selectedFireId = null;
+var activeRoute = null;
+var currentStepIndex = -1;
+var lastSpokenStep = -1;
+var watchId = null;
+var rerouteTimer = null;
+var lastRouteOrigin = null;
+var RADIUS = 45;
+var cfg = { voice:true, autoRoute:true, vibrate:true, reroute:60 };
+var vehicleHeading = 0;
+
+/* ================= أدوات ================= */
+function toRad(d){return d*Math.PI/180}
+function toDeg(r){return r*180/Math.PI}
+function haversine(a,b,c,d){
+  var R=6371, dLat=toRad(c-a), dLng=toRad(d-b);
+  var x=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function bearing(a,b,c,d){
+  var y=Math.sin(toRad(d-b))*Math.cos(toRad(c));
+  var x=Math.cos(toRad(a))*Math.sin(toRad(c))-Math.sin(toRad(a))*Math.cos(toRad(c))*Math.cos(toRad(d-b));
+  return (toDeg(Math.atan2(y,x))+360)%360;
+}
+function fmtDist(km){
+  if(km<1) return Math.round(km*1000)+' م';
+  return km.toFixed(1)+' كم';
+}
+function fmtTime(min){
+  if(min<1) return 'أقل من دقيقة';
+  if(min<60) return Math.round(min)+' دقيقة';
+  var h=Math.floor(min/60), m=Math.round(min%60);
+  return h+' س '+m+' د';
+}
+function toast(msg,type){
+  var t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='show'+(type?' '+type:'');
+  clearTimeout(t._tm);
+  t._tm=setTimeout(function(){t.className='';},3500);
+}
+function speak(text){
+  if(!cfg.voice || !('speechSynthesis' in window)) return;
+  try{
+    speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(text);
+    u.lang='ar-SA'; u.rate=0.95; u.pitch=1;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+function vibrate(pattern){
+  if(cfg.vibrate && navigator.vibrate) try{navigator.vibrate(pattern)}catch(e){}
+}
+function loadCfg(){
+  try{ var s=JSON.parse(localStorage.getItem('navCfg')); if(s) cfg=Object.assign(cfg,s);}catch(e){}
+  RADIUS = parseInt(localStorage.getItem('navRadius')||'45');
+}
+function saveCfg(){ localStorage.setItem('navCfg',JSON.stringify(cfg)); localStorage.setItem('navRadius',RADIUS); }
+
+/* ================= ترجمة تعليمات OSRM ================= */
+function maneuverArabic(type, modifier, road){
+  var m = modifier || '';
+  var map = {
+    'turn': {'left':'انعطف يساراً','right':'انعطف يميناً','slight left':'انعطف قليلاً إلى اليسار','slight right':'انعطف قليلاً إلى اليمين','sharp left':'انعطف بحدة يساراً','sharp right':'انعطف بحدة يميناً','straight':'تابع بشكل مستقيم','uturn':'قم بدوران كامل'},
+    'new name':{'straight':'تابع بشكل مستقيم','left':'انعطف يساراً','right':'انعطف يميناً'},
+    'depart':{'straight':'انطلق','left':'انطلق يساراً','right':'انطلق يميناً'},
+    'arrive':{'straight':'وصلت إلى الموقع'},
+    'merge':{'left':'اندمج يساراً','right':'اندمج يميناً','slight left':'اندمج قليلاً يساراً','slight right':'اندمج قليلاً يميناً'},
+    'on ramp':{'left':'اسلك المنحدر يساراً','right':'اسلك المنحدر يميناً'},
+    'off ramp':{'left':'اخرج من المنحدر يساراً','right':'اخرج من المنحدر يميناً'},
+    'fork':{'left':'خذ الفرع الأيسر','right':'خذ الفرع الأيمن','slight left':'خذ الفرع الأيسر','slight right':'خذ الفرع الأيمن'},
+    'roundabout':{'straight':'ادخل الدوار وتابع'},
+    'rotary':{'straight':'ادخل الدوار وتابع'},
+    'continue':{'straight':'تابع','left':'تابع يساراً','right':'تابع يميناً','slight left':'تابع قليلاً يساراً','slight right':'تابع قليلاً يميناً'}
+  };
+  var grp = map[type];
+  var txt = grp ? (grp[m] || grp['straight'] || 'تابع') : (type==='roundabout'?'ادخل الدوار':'تابع');
+  if (type==='roundabout'||type==='rotary') txt='ادخل الدوار ثم اخرج عند المخرج المناسب';
+  if (road && road!=='' && type!=='arrive') txt += ' على ' + road;
+  return txt;
+}
+function arrowFor(modifier){
+  var m=modifier||'';
+  if(m.indexOf('slight left')>-1) return '↖️';
+  if(m.indexOf('slight right')>-1) return '↗️';
+  if(m.indexOf('sharp left')>-1) return '⬅️';
+  if(m.indexOf('sharp right')>-1) return '➡️';
+  if(m.indexOf('left')>-1) return '⬅️';
+  if(m.indexOf('right')>-1) return '➡️';
+  if(m.indexOf('uturn')>-1) return '🔄';
+  return '⬆️';
+}
+
+/* ================= الخريطة ================= */
+function initMap(){
+  map = L.map('map',{zoomControl:false,tap:false}).setView([34.8,38.0],7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OSM'}).addTo(map);
+  L.control.zoom({position:'bottomleft'}).addTo(map);
+}
+
+/* ================= الموقع ================= */
+function startTracking(){
+  if(!navigator.geolocation){ toast('❌ الجهاز لا يدعم GPS','err'); return; }
+  toast('🔍 جاري تحديد موقعك...');
+  if(watchId) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(onPosition, onPosError, {
+    enableHighAccuracy:true, timeout:25000, maximumAge:3000
+  });
+}
+function onPosition(pos){
+  var lat=pos.coords.latitude, lng=pos.coords.longitude, acc=pos.coords.accuracy;
+  var prevLat=userLat, prevLng=userLng;
+  userLat=lat; userLng=lng; userAcc=acc;
+
+  if(prevLat!==null){
+    var d = haversine(prevLat,prevLng,lat,lng);
+    if(d>0.01) vehicleHeading = bearing(prevLat,prevLng,lat,lng);
+  }
+  var compassArrow = document.getElementById('compassArrow');
+  if(compassArrow) compassArrow.style.transform = 'rotate('+vehicleHeading+'deg)';
+
+  if(!userMarker){
+    var icon = L.divIcon({
+      html:'<div style="background:#1976d2;width:20px;height:20px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 6px rgba(25,118,210,.25),0 0 20px rgba(25,118,210,.9)"></div>',
+      iconSize:[20,20], className:''
+    });
+    userMarker = L.marker([lat,lng],{icon:icon,zIndexOffset:1000}).addTo(map);
+    userMarker.bindPopup('<b style="color:#1976d2">🚒 موقعك</b>');
+    map.flyTo([lat,lng],14);
+  } else {
+    userMarker.setLatLng([lat,lng]);
+  }
+  if(!accuracyCircle){
+    accuracyCircle = L.circle([lat,lng],{radius:acc,color:'#1976d2',fillColor:'#1976d2',fillOpacity:.12,weight:1,dashArray:'4,4'}).addTo(map);
+  } else {
+    accuracyCircle.setLatLng([lat,lng]); accuracyCircle.setRadius(acc);
+  }
+
+  renderFireList();
+  if(selectedFireId!==null) checkReroute();
+}
+function onPosError(err){
+  var m='❌ ';
+  if(err.code===1) m+='تم رفض إذن الموقع - فعّل GPS واسمح بالوصول';
+  else if(err.code===2) m+='الموقع غير متاح حالياً';
+  else if(err.code===3) m+='انتهت مدة التحديد';
+  else m+='خطأ غير معروف';
+  toast(m,'err');
+}
+
+/* ================= تطبيع الإحداثيات والتشخيص ================= */
+function toNum(v){
+  if(v===null||v===undefined) return null;
+  if(typeof v==='object'){
+    if(typeof v.latitude==='number') return v.latitude;
+    if(typeof v._latitude==='number') return v._latitude;
+    return null;
+  }
+  var n=parseFloat(v);
+  return isNaN(n)?null:n;
+}
+function coordPair(d){
+  var lat=toNum(d.lat), lng=toNum(d.lng);
+  if((lat===null||lng===null) && d.location && typeof d.location==='object'){
+    lat=toNum(d.location);
+    if(typeof d.location.longitude==='number') lng=d.location.longitude;
+    else if(typeof d.location._longitude==='number') lng=d.location._longitude;
+  }
+  if(typeof lat==='number' && typeof lng==='number') return [lat,lng];
+  return null;
+}
+function updateDiag(){
+  var el=document.getElementById('fbDiag');
+  if(el) el.textContent=(window._fbReceived||0)+' / '+(reports.length)+' / '+(window._fbDropped||0);
+}
+
+/* ================= مزامنة البلاغات من درع الغابة ================= */
+function listenReports(){
+  if(!db){ toast('❌ Firebase غير مهيأ','err'); return; }
+  db.collection('reports').onSnapshot(function(snap){
+    document.getElementById('connStatus').textContent='🟢 متصل';
+    document.getElementById('connStatus').className='online';
+    var changed=false;
+    var isFirstSnap = !window._fbGotFirst;
+    window._fbGotFirst = true;
+    window._fbReceived = (window._fbReceived||0) + snap.size;
+    updateDiag();
+    snap.docChanges().forEach(function(ch){
+      var data = ch.doc.data();
+      var ll = coordPair(data);
+      if(!ll){
+        window._fbDropped = (window._fbDropped||0)+1;
+        updateDiag();
+        console.warn('بلاغ بدون إحداثيات صالحة، doc=', ch.doc.id, data);
+        return;
+      }
+      data.lat=ll[0]; data.lng=ll[1];
+      data._docId = ch.doc.id;
+      if(data.id===undefined) data.id = ch.doc.id;
+      var idx = reports.findIndex(function(r){return String(r.id)===String(data.id);});
+      if(ch.type==='added'){
+        if(idx===-1){
+          reports.push(data);
+          changed=true;
+          if(!isFirstSnap && data.status!=='تم الإخماد'){
+            // بلاغ جديد
+            var d = userLat!==null ? haversine(userLat,userLng,data.lat,data.lng) : null;
+            if(d!==null && d<=RADIUS){
+              notifyNewFire(data,d);
+            }
+          }
+        }
+      } else if(ch.type==='modified'){
+        if(idx>-1) reports[idx]=data;
+        changed=true;
+      } else if(ch.type==='removed'){
+        if(idx>-1) reports.splice(idx,1);
+        changed=true;
+      }
+    });
+    if(changed){ renderFireList(); renderFireMarkers(); }
+  }, function(err){
+    console.error('Firestore error', err);
+    var msg='🔴 '+err.code, hint='';
+    if(err.code==='permission-denied'){
+      hint='قواعد Firestore ترفض الوصول — عدّل Rules أو سجّل الدخول قبل الاستماع';
+    } else if(err.code==='unauthenticated'){
+      hint='مطلوب تسجيل دخول — فعّل Anonymous Authentication في Firebase Console';
+    } else if(err.code==='unavailable'||err.code==='failed-precondition'){
+      hint='مشكلة شبكة/اتصال بالإنترنت';
+    } else if(err.code==='not-found'){
+      hint='المجموعة reports غير موجودة';
+    }
+    document.getElementById('connStatus').textContent=msg;
+    document.getElementById('connStatus').className='offline';
+    document.getElementById('fbState').textContent=msg+(hint?' — '+hint:'');
+    if(!window._fbErrShown){
+      window._fbErrShown=true;
+      toast('❌ '+msg+(hint?': '+hint:''),'err');
+    }
+    // إعادة المحاولة بعد نجاح المصادقة لاحقاً
+    window._listening=false;
+  });
+}
+var firstSnapshot = true;
+var _seenIds = {};
+function markOldReports(){
+  reports.forEach(function(r){ _seenIds[String(r.id)]=true; });
+}
+
+function notifyNewFire(report, dist){
+  vibrate([300,150,300,150,300]);
+  speak('تنبيه. حريق جديد على بعد ' + fmtDist(dist) + ' من موقعك');
+  toast('🚨 حريق جديد على بعد '+fmtDist(dist),'err');
+  if(cfg.autoRoute && selectedFireId===null){
+    selectFire(report.id, true);
+  }
+}
+
+/* ================= قائمة الحرائق ================= */
+function getActiveReports(){
+  return reports.filter(function(r){ return r.status!=='تم الإخماد'; });
+}
+function sortedReports(){
+  var arr = getActiveReports().slice();
+  if(userLat===null){
+    arr.sort(function(a,b){ return (b.id||0)-(a.id||0); });
+    return arr.map(function(r){ return {r:r, dist:null}; });
+  }
+  return arr.map(function(r){ return {r:r, dist:haversine(userLat,userLng,r.lat,r.lng)}; })
+            .sort(function(a,b){ return a.dist-b.dist; });
+}
+function renderFireList(){
+  var list = document.getElementById('fireList');
+  var data = sortedReports();
+  if(data.length===0){
+    list.innerHTML='<div class="hint">✅ لا توجد بلاغات نشطة حالياً — في انتظار إشارة من مركز القيادة</div>';
+    return;
+  }
+  var html='';
+  data.forEach(function(item){
+    var r=item.r, d=item.dist;
+    var far = (d!==null && d>RADIUS);
+    var cls='fire-item'+(selectedFireId===r.id?' selected':'')+(far?' far':'');
+    var statusCls = r.status==='قيد المعالجة'?'b-proc':(r.status==='تم الإخماد'?'b-done':'b-new');
+    var nasa = r.source==='NASA_FIRMS'?'<span class="badge b-nasa">🛰️ NASA</span>':'';
+    var eta = (d!==null)? Math.max(1,Math.round(d/50*60)) : null; // 50 كم/س متوسط
+    html += '<div class="'+cls+'" onclick="window.__selectFire('+r.id+')">';
+    html += '<div class="fi-top">';
+    html += '<span class="fi-title">🔥 '+ (r.type||'حريق') +' — '+ (r.severity||'') +'</span>';
+    html += '<span class="fi-dist">'+(d!==null?fmtDist(d):'--')+'</span>';
+    html += '</div>';
+    html += '<div class="fi-sub">📍 '+(r.location||'غير محدد')+'</div>';
+    html += '<div class="fi-sub">📌 <span class="badge '+statusCls+'">'+r.status+'</span>'+nasa+
+            (eta!==null?' ⏱️ ~'+eta+' د':'')+'</div>';
+    html += '</div>';
+  });
+  list.innerHTML = html;
+}
+
+/* ================= علامات الحرائق على الخريطة ================= */
+function renderFireMarkers(){
+  // إزالة القديمة
+  Object.keys(fireMarkers).forEach(function(k){
+    if(!reports.find(function(r){return String(r.id)===String(k)})){
+      map.removeLayer(fireMarkers[k]); delete fireMarkers[k];
+    }
+  });
+  reports.forEach(function(r){
+    if(r.status==='تم الإخماد' && String(r.id)!==String(selectedFireId)){
+      if(fireMarkers[r.id]){ map.removeLayer(fireMarkers[r.id]); delete fireMarkers[r.id]; }
+      return;
+    }
+    var isSel = String(r.id)===String(selectedFireId);
+    var color = r.status==='تم الإخماد'?'#4CAF50':(r.status==='قيد المعالجة'?'#FF9800':'#f44336');
+    var size = isSel?26:18;
+    var icon = L.divIcon({
+      html:'<div style="background:'+color+';width:'+size+'px;height:'+size+'px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 18px '+color+';'+(isSel?'animation:pulse 1.2s infinite':'')+'"></div>',
+      iconSize:[size,size]
+    });
+    if(fireMarkers[r.id]){ fireMarkers[r.id].setLatLng([r.lat,r.lng]); fireMarkers[r.id].setIcon(icon); }
+    else {
+      var m = L.marker([r.lat,r.lng],{icon:icon}).addTo(map);
+      m.on('click', function(){ window.__selectFire(r.id); });
+      fireMarkers[r.id]=m;
+    }
+  });
+}
+
+/* ================= اختيار حريق + المسار ================= */
+window.__selectFire = function(id, silent){
+  var r = reports.find(function(x){return String(x.id)===String(id)});
+  if(!r) return;
+  selectedFireId = r.id;
+  renderFireList();
+  renderFireMarkers();
+  if(userLat===null){
+    toast('⏳ بانتظار تحديد موقعك أولاً','warn');
+    startTracking();
+    return;
+  }
+  fetchRoute(userLat,userLng,r.lat,r.lng);
+  if(!silent) {
+    // طي القائمة قليلاً
+    document.getElementById('sheet').classList.remove('collapsed');
+  }
+};
+
+function clearRoute(){
+  if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
+  if(routeCasing){ map.removeLayer(routeCasing); routeCasing=null; }
+  activeRoute=null; currentStepIndex=-1; lastSpokenStep=-1;
+  document.getElementById('navCard').classList.remove('active');
+}
+
+function fetchRoute(oLat,oLng,dLat,dLng){
+  var url='https://router.project-osrm.org/route/v1/driving/'+
+          oLng+','+oLat+';'+dLng+','+dLat+
+          '?overview=full&geometries=geojson&steps=true&annotations=false';
+  toast('🧭 جاري حساب المسار...');
+  fetch(url).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(data){
+    if(!data.routes||!data.routes.length) throw new Error('لا يوجد مسار');
+    activeRoute = data.routes[0];
+    lastRouteOrigin = {lat:oLat,lng:oLng};
+    drawRoute(activeRoute);
+    updateNavCard(activeRoute);
+    document.getElementById('navCard').classList.add('active');
+    document.getElementById('sheet').classList.add('collapsed');
+    speak('تم حساب المسار. '+fmtDist(activeRoute.distance/1000)+' متبقية');
+    toast('✅ تم حساب المسار','ok');
+  }).catch(function(e){
+    console.warn(e);
+    // مسار تقديري بخط مستقيم
+    drawStraightLine(oLat,oLng,dLat,dLng);
+    toast('⚠️ تعذّر حساب المسار — عرض خط مباشر','warn');
+  });
+}
+
+function drawRoute(route){
+  if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
+  if(routeCasing){ map.removeLayer(routeCasing); routeCasing=null; }
+  var coords = route.geometry.coordinates.map(function(c){ return [c[1],c[0]]; });
+  routeCasing = L.polyline(coords,{color:'#000',weight:10,opacity:.35,lineJoin:'round'}).addTo(map);
+  routeLine = L.polyline(coords,{color:'#ff6f00',weight:6,opacity:.95,lineJoin:'round'}).addTo(map);
+  map.fitBounds(routeLine.getBounds().pad(0.15), {maxZoom:15});
+}
+function drawStraightLine(oLat,oLng,dLat,dLng){
+  if(routeLine) map.removeLayer(routeLine);
+  routeLine = L.polyline([[oLat,oLng],[dLat,dLng]],{color:'#ff6f00',weight:5,dashArray:'10,8'}).addTo(map);
+  map.fitBounds(routeLine.getBounds().pad(0.2),{maxZoom:14});
+}
+
+/* ================= بطاقة الملاحة ================= */
+function updateNavCard(route){
+  var leg = route.legs[0];
+  var totalDist = route.distance/1000;   // كم
+  var totalTime = route.duration/60;     // دقائق
+  document.getElementById('navDist').textContent = totalDist.toFixed(1);
+  document.getElementById('navTime').textContent = Math.round(totalTime);
+  var arrive = new Date(Date.now()+route.duration*1000);
+  document.getElementById('navArrive').textContent =
+      ('0'+arrive.getHours()).slice(-2)+':'+('0'+arrive.getMinutes()).slice(-2);
+
+  // الخطوة الحالية
+  var step = getCurrentStep(leg);
+  if(step){
+    document.getElementById('navArrow').textContent = arrowFor(step.maneuver.modifier);
+    document.getElementById('navInstr').textContent = maneuverArabic(step.maneuver.type, step.maneuver.modifier, '');
+    document.getElementById('navRoad').textContent = (step.name && step.name!=='') ? step.name : 'تابع الطريق';
+  }
+}
+
+function getCurrentStep(leg){
+  if(!leg || !leg.steps) return null;
+  var best=0, bestDist=Infinity;
+  for(var i=0;i<leg.steps.length;i++){
+    var loc = leg.steps[i].maneuver.location; // [lng,lat]
+    var d = haversine(userLat,userLng,loc[1],loc[0]);
+    if(d<bestDist){ bestDist=d; best=i; }
+  }
+  currentStepIndex = best;
+  return leg.steps[best];
+}
+
+/* ================= إعادة الحساب التلقائي ================= */
+function checkReroute(){
+  if(!activeRoute || selectedFireId===null || !lastRouteOrigin) return;
+  var moved = haversine(lastRouteOrigin.lat,lastRouteOrigin.lng,userLat,userLng);
+  // انحراف عن المسار
+  var offRoute = distanceToRoute(userLat,userLng);
+  var thresh = (cfg.reroute===0)? 0.15 : 0.05; // كم
+  if(offRoute>0.12 || moved>0.4){
+    var r = reports.find(function(x){return String(x.id)===String(selectedFireId)});
+    if(r) fetchRoute(userLat,userLng,r.lat,r.lng);
+  }
+}
+function distanceToRoute(lat,lng){
+  if(!routeLine) return 0;
+  var pts = routeLine.getLatLngs();
+  var min=Infinity;
+  for(var i=0;i<pts.length;i+=2){
+    var d = haversine(lat,lng,pts[i].lat,pts[i].lng);
+    if(d<min) min=d;
+  }
+  return min;
+}
+
+/* ================= تحديث لحظي أثناء القيادة ================= */
+function liveUpdate(){
+  if(!activeRoute || selectedFireId===null || userLat===null) return;
+  var r = reports.find(function(x){return String(x.id)===String(selectedFireId)});
+  if(!r) return;
+
+  // المسافة المباشرة المتبقية (خط الهواء) — أدق من OSRM بعد الانحراف
+  var direct = haversine(userLat,userLng,r.lat,r.lng);
+  // نسبة الطريق المتبقي تقديرياً
+  var remainKm = Math.min(direct*1.35, activeRoute.distance/1000);
+  document.getElementById('navDist').textContent = remainKm.toFixed(1);
+
+  var eta = new Date(Date.now() + (remainKm/50)*3600*1000);
+  document.getElementById('navArrive').textContent =
+      ('0'+eta.getHours()).slice(-2)+':'+('0'+eta.getMinutes()).slice(-2);
+  document.getElementById('navTime').textContent = Math.max(1,Math.round(remainKm/50*60));
+
+  // تحديث الخطوة
+  var leg = activeRoute.legs[0];
+  var step = getCurrentStep(leg);
+  if(step){
+    document.getElementById('navArrow').textContent = arrowFor(step.maneuver.modifier);
+    var loc = step.maneuver.location;
+    var dToStep = haversine(userLat,userLng,loc[1],loc[0]);
+    var instr = maneuverArabic(step.maneuver.type, step.maneuver.modifier,'');
+    document.getElementById('navInstr').textContent = instr;
+    document.getElementById('navRoad').textContent = 'بعد ' + fmtDist(dToStep);
+
+    // إعلان صوتي عند تغيّر الخطوة
+    if(currentStepIndex!==lastSpokenStep){
+      lastSpokenStep=currentStepIndex;
+      if(dToStep>0.08 && currentStepIndex<leg.steps.length-1){
+        speak('بعد '+fmtDist(dToStep)+'، '+instr);
+      }
+    }
+  }
+
+  // إعلان الوصول
+  if(direct<0.12){
+    if(!window._arrivedFlag){
+      window._arrivedFlag=true;
+      speak('لقد وصلت إلى موقع الحريق');
+      vibrate([500,200,500,200,500]);
+      toast('🏁 وصلت إلى موقع الحريق','ok');
+    }
+  } else { window._arrivedFlag=false; }
+}
+
+/* ================= تحديث حالة البلاغ في Firestore ================= */
+function updateReportStatus(id, status){
+  if(!db) return;
+  var rep = reports.find(function(x){return String(x.id)===String(id)});
+  var docId = (rep && rep._docId) ? String(rep._docId) : String(id);
+  db.collection('reports').doc(docId).update({
+    status: status,
+    lastUpdate: new Date().toISOString(),
+    handledBy: 'وحدة الملاحة - '+ (localStorage.getItem('unitName')||'غير محددة')
+  }).then(function(){
+    toast('✅ تم تحديث الحالة إلى: '+status,'ok');
+  }).catch(function(e){
+    console.error(e);
+    toast('❌ فشل التحديث: '+e.message,'err');
+  });
+}
+
+/* ================= الأحداث ================= */
+document.getElementById('sheetHandle').addEventListener('click',function(){
+  document.getElementById('sheet').classList.toggle('collapsed');
+});
+document.getElementById('btnLocate').addEventListener('click',function(){
+  if(userLat!==null) map.flyTo([userLat,userLng],16);
+  startTracking();
+});
+document.getElementById('btnStopNav').addEventListener('click',function(){
+  clearRoute(); selectedFireId=null; renderFireList(); renderFireMarkers();
+  toast('⏹️ تم إيقاف التوجيه');
+});
+document.getElementById('btnAccept').addEventListener('click',function(){
+  if(selectedFireId===null){ toast('❌ اختر بلاغاً أولاً','warn'); return; }
+  updateReportStatus(selectedFireId,'قيد المعالجة');
+});
+document.getElementById('btnDone').addEventListener('click',function(){
+  if(selectedFireId===null){ toast('❌ اختر بلاغاً أولاً','warn'); return; }
+  if(!confirm('تأكيد: تم إخماد الحريق؟')) return;
+  updateReportStatus(selectedFireId,'تم الإخماد');
+  clearRoute(); selectedFireId=null;
+});
+document.getElementById('btnExternal').addEventListener('click',function(){
+  var r = reports.find(function(x){return String(x.id)===String(selectedFireId)});
+  if(!r){ toast('❌ اختر بلاغاً','warn'); return; }
+  window.open('https://www.google.com/maps/dir/?api=1&destination='+r.lat+','+r.lng+'&travelmode=driving','_blank');
+});
+
+/* الإعدادات */
+var sModal = document.getElementById('settingsModal');
+document.getElementById('btnSettings').addEventListener('click',function(){
+  document.getElementById('radiusRange').value=RADIUS;
+  document.getElementById('radiusVal').textContent=RADIUS;
+  document.getElementById('voiceToggle').checked=cfg.voice;
+  document.getElementById('autoRouteToggle').checked=cfg.autoRoute;
+  document.getElementById('vibrateToggle').checked=cfg.vibrate;
+  document.getElementById('rerouteSelect').value=cfg.reroute;
+  sModal.classList.add('active');
+});
+document.getElementById('btnCloseSettings').addEventListener('click',function(){ sModal.classList.remove('active'); });
+document.getElementById('radiusRange').addEventListener('input',function(){
+  RADIUS=parseInt(this.value);
+  document.getElementById('radiusVal').textContent=RADIUS;
+  saveCfg(); renderFireList(); renderFireMarkers();
+});
+document.getElementById('voiceToggle').addEventListener('change',function(){ cfg.voice=this.checked; saveCfg(); });
+document.getElementById('autoRouteToggle').addEventListener('change',function(){ cfg.autoRoute=this.checked; saveCfg(); });
+document.getElementById('vibrateToggle').addEventListener('change',function(){ cfg.vibrate=this.checked; saveCfg(); });
+document.getElementById('rerouteSelect').addEventListener('change',function(){
+  cfg.reroute=parseInt(this.value); saveCfg(); scheduleReroute();
+});
+
+function scheduleReroute(){
+  if(rerouteTimer) clearInterval(rerouteTimer);
+  if(cfg.reroute>0){
+    rerouteTimer = setInterval(checkReroute, cfg.reroute*1000);
+  }
+}
+
+/* ================= التهيئة ================= */
+function hideSplash(){
+  var s=document.getElementById('splash');
+  if(s){ s.classList.add('hidden'); setTimeout(function(){ s.remove(); },800); }
+}
+
+function init(){
+  loadCfg();
+  initMap();
+  // استمع للبلاغات ثم ضع علامة "قديمة" على الموجودة مسبقاً
+  startTracking();
+  scheduleReroute();
+  setInterval(liveUpdate, 2000);
+
+  if(auth){
+    auth.onAuthStateChanged(function(u){
+      if(u){
+        document.getElementById('fbState').textContent='✅ متصل ('+u.uid.slice(0,6)+')';
+        if(!window._listening){
+          window._listening=true;
+          window._fbErrShown=false;
+          listenReports();
+        }
+      } else {
+        document.getElementById('fbState').textContent='⏳ تسجيل دخول مجهول...';
+        auth.signInAnonymously().then(function(){
+          document.getElementById('fbState').textContent='✅ دخول ناجح';
+        }).catch(function(e){
+          console.error('Anonymous auth failed:', e);
+          document.getElementById('fbState').textContent='❌ '+e.code;
+          toast('❌ فشل الدخول المجهول: '+e.code+' — فعّل Anonymous في Firebase Console > Authentication','err');
+          if(!window._listening){ window._listening=true; listenReports(); }
+        });
+      }
+    });
+  } else {
+    listenReports();
+  }
+
+  setTimeout(hideSplash, 900);
+}
+
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+
+/* Service Worker */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('./sw.js').catch(function(){});
+  });
+}
+
+})();
+</script>
+</body>
+</html>
